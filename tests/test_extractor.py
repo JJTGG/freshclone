@@ -1,7 +1,4 @@
-import json
-import tempfile
 import unittest
-from pathlib import Path
 
 from freshclone.extractor import extract
 
@@ -12,9 +9,14 @@ class ExtractorRegressionTests(unittest.TestCase):
         self.assertEqual(blocks[0].commands, ["echo ok"])
 
     def test_tilde_and_long_fences_match_their_closer(self):
-        text = "## Setup\n~~~sh\necho tilde\n~~~\n\n## Build\n````bash\necho long\n```\necho still\n````"
+        text = "## Setup\n~~~sh\necho tilde\n~~~\n\n## Build\n````bash\necho long\necho still\n````"
         blocks = extract(text)
         self.assertEqual([b.commands for b in blocks], [["echo tilde"], ["echo long", "echo still"]])
+
+    def test_short_or_different_fence_does_not_close_long_fence(self):
+        text = "## Setup\n````bash\necho long\n```\n~~~\nstill\n````"
+        blocks = extract(text)
+        self.assertEqual(blocks[0].commands, ["echo long", "```", "~~~", "still"])
 
     def test_html_comments_are_removed_before_parsing(self):
         text = "## Setup\n<!--\n```bash\necho hidden\n```\n-->\n```bash\necho visible\n```"
@@ -69,12 +71,12 @@ class ExtractorRegressionTests(unittest.TestCase):
         self.assertEqual(blocks[0].status, "skipped")
 
     def test_alternative_prose_is_skipped(self):
-        text = "## Setup\nUse this on Linux. Alternatively, use the macOS instructions.\n```bash\nbrew install tool\n```"
+        text = "## Setup\nAlternatively, use the Linux instructions:\n```bash\nmake setup\n```"
         blocks = extract(text)
         self.assertIn("alternative", blocks[0].reason)
 
     def test_project_library_install_is_skipped(self):
-        blocks = extract("## Setup\n```bash\nnpm install freshclone\n```")
+        blocks = extract("## Setup\n```bash\nnpm install freshclone\n```", package_name="freshclone")
         self.assertEqual(blocks[0].status, "skipped")
         self.assertIn("library", blocks[0].reason)
 
