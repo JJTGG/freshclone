@@ -16,6 +16,3 @@ node_modules/
 htmlcov/
 dist/
 build/
-
-# Local sample analysis output
-samples-report.txt
