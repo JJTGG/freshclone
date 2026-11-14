@@ -1,0 +1,21 @@
+# Local environments
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Test and build output
+.coverage
+htmlcov/
+dist/
+build/
+
+# Local sample analysis output
+samples-report.txt
