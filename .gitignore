@@ -16,3 +16,5 @@ node_modules/
 htmlcov/
 dist/
 build/
+
+tests/samples/*.md
