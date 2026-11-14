@@ -24,104 +24,95 @@ class ExtractorRegressionTests(unittest.TestCase):
         self.assertEqual([b.commands for b in blocks], [["echo visible"]])
 
     def test_bom_does_not_hide_first_heading(self):
-        blocks = extract("\ufeff## Setup\n```bash\necho ok\n```")
-        self.assertEqual(len(blocks), 1)
+        self.assertEqual(len(extract("\ufeff## Setup\n```bash\necho ok\n```")), 1)
 
     def test_output_preserves_readme_order(self):
         text = "## Build\n```bash\necho build\n```\n## Development\n```bash\necho dev\n```"
-        blocks = extract(text)
-        self.assertEqual([b.commands[0] for b in blocks], ["echo build", "echo dev"])
+        self.assertEqual([b.commands[0] for b in extract(text)], ["echo build", "echo dev"])
 
     def test_subheading_inherits_parent_priority(self):
-        text = "## Local development\n### Commands\n```bash\necho dev\n```"
-        blocks = extract(text)
-        self.assertEqual(len(blocks), 1)
+        blocks = extract("## Local development\n### Commands\n```bash\necho dev\n```")
         self.assertEqual(blocks[0].heading, "Commands")
 
     def test_heading_matching_uses_contains_or_startswith(self):
         text = "## Installation\n```bash\necho install\n```\n## Quickstart guide\n```bash\necho quick\n```\n## Usage\n```bash\necho ignored\n```"
-        blocks = extract(text)
-        self.assertEqual([b.commands[0] for b in blocks], ["echo install", "echo quick"])
+        self.assertEqual([b.commands[0] for b in extract(text)], ["echo install", "echo quick"])
+
+    def test_usage_nested_under_target_is_ignored(self):
+        text = "## Development\n### Usage\n```bash\necho ignored\n```\n### Commands\n```bash\necho setup\n```"
+        self.assertEqual([b.commands for b in extract(text)], [["echo setup"]])
 
     def test_backslash_continuation_is_joined(self):
-        blocks = extract("## Setup\n```bash\necho one \\\n  two\n```")
-        self.assertEqual(blocks[0].commands, ["echo one two"])
+        self.assertEqual(extract("## Setup\n```bash\necho one \\\n  two\n```")[0].commands, ["echo one two"])
 
     def test_console_keeps_only_prompts(self):
         text = "## Setup\n```console\n$ echo ok\nok\n$ echo again\nagain\n```"
-        blocks = extract(text)
-        self.assertEqual(blocks[0].commands, ["echo ok", "echo again"])
+        self.assertEqual(extract(text)[0].commands, ["echo ok", "echo again"])
 
     def test_unsupported_language_is_reported(self):
-        blocks = extract("## Setup\n```zsh\necho no\n```")
-        self.assertEqual(blocks[0].status, "skipped")
-        self.assertIn("unsupported", blocks[0].reason)
+        block = extract("## Setup\n```zsh\necho no\n```")[0]
+        self.assertEqual(block.status, "skipped")
+        self.assertIn("unsupported", block.reason)
 
     def test_install_is_reported_when_higher_priority_exists(self):
         text = "## Development\n```bash\necho dev\n```\n## Install\n```bash\necho install\n```"
-        blocks = extract(text)
-        self.assertEqual(len(blocks), 2)
-        self.assertIn("lower-priority", blocks[1].reason)
+        self.assertIn("lower-priority", extract(text)[1].reason)
 
     def test_no_setup_section_is_explicit(self):
         self.assertEqual(extract("# Project\nNo commands here."), [])
 
     def test_placeholder_block_is_skipped(self):
-        blocks = extract("## Setup\n```bash\nexport API_KEY=<your-key>\n```")
-        self.assertEqual(blocks[0].status, "skipped")
+        self.assertEqual(extract("## Setup\n```bash\nexport API_KEY=<your-key>\n```")[0].status, "skipped")
+
+    def test_brace_placeholder_is_skipped(self):
+        block = extract("## Setup\n```bash\necho {your-project}\n```")[0]
+        self.assertIn("placeholder", block.reason)
 
     def test_alternative_prose_is_skipped(self):
-        text = "## Setup\nAlternatively, use the Linux instructions:\n```bash\nmake setup\n```"
-        blocks = extract(text)
-        self.assertIn("alternative", blocks[0].reason)
+        block = extract("## Setup\nAlternatively, use the Linux instructions:\n```bash\nmake setup\n```")[0]
+        self.assertIn("alternative", block.reason)
 
-    def test_alternative_bare_or_between_blocks_skips_only_second(self):
-        text = "## Setup\n```bash\necho first\n```or\n```bash\necho second\n```"
-        blocks = extract(text)
-        self.assertEqual(blocks[0].status, "usable")
-        self.assertEqual(blocks[1].status, "skipped")
-        self.assertIn("alternative", blocks[1].reason)
-
-    def test_alternative_or_variants_are_skipped(self):
-        for prose in ("Or:", "**or**", "otherwise"):
+    def test_alternative_variants_skip_only_second(self):
+        for prose in ("or", "Or:", "**or**", "otherwise"):
             text = f"## Setup\n```bash\necho first\n```\n{prose}\n```bash\necho second\n```"
             blocks = extract(text)
             self.assertEqual(blocks[0].status, "usable", prose)
             self.assertEqual(blocks[1].status, "skipped", prose)
             self.assertIn("alternative", blocks[1].reason)
 
-    def test_using_yarn_still_marks_the_block_as_alternative(self):
-        text = "## Setup\nUsing yarn:\n```bash\nyarn install\n```"
-        blocks = extract(text)
-        self.assertEqual(blocks[0].status, "skipped")
-        self.assertIn("alternative", blocks[0].reason)
+    def test_using_yarn_is_an_alternative(self):
+        block = extract("## Setup\nUsing yarn:\n```bash\nyarn install\n```")[0]
+        self.assertIn("alternative", block.reason)
+
+    def test_multiple_package_managers_are_skipped(self):
+        block = extract("## Setup\n```bash\nnpm install\nyarn install\npnpm install\n```")[0]
+        self.assertIn("multiple package managers", block.reason)
+
+    def test_scaffold_dependent_steps_are_skipped(self):
+        block = extract("## Setup\n```bash\nnpx create-app demo\ncd demo\nnpm install\nnpm run build\n```")[0]
+        self.assertIn("scaffold", block.reason)
 
     def test_project_library_install_is_skipped(self):
-        blocks = extract("## Setup\n```bash\nnpm install freshclone\n```", package_name="freshclone")
-        self.assertEqual(blocks[0].status, "skipped")
-        self.assertIn("library", blocks[0].reason)
+        block = extract("## Setup\n```bash\nnpm install freshclone\n```", package_name="freshclone")[0]
+        self.assertIn("library", block.reason)
 
     def test_own_clone_is_skipped_and_cd_is_rewritten(self):
         text = "## Setup\n```bash\ngit clone https://github.com/acme/demo.git\ncd demo\nnpm install\n```"
-        blocks = extract(text, repo_url="https://github.com/acme/demo")
-        self.assertIn("clone", blocks[0].reason)
-        self.assertEqual(blocks[0].commands, ["cd /workspace/repo", "npm install"])
+        block = extract(text, repo_url="https://github.com/acme/demo")[0]
+        self.assertIn("clone", block.reason)
+        self.assertEqual(block.commands, ["cd /workspace/repo", "npm install"])
 
     def test_unsupported_host_commands_are_skipped(self):
-        blocks = extract("## Setup\n```bash\nsudo apt-get update\n```")
-        self.assertIn("not supported", blocks[0].reason)
+        self.assertIn("not supported", extract("## Setup\n```bash\nsudo apt-get update\n```")[0].reason)
 
     def test_yarn_install_is_not_an_alternative_by_itself(self):
-        blocks = extract("## Setup\n```bash\nyarn install\n```")
-        self.assertEqual(blocks[0].status, "usable")
+        self.assertEqual(extract("## Setup\n```bash\nyarn install\n```")[0].status, "usable")
 
     def test_interactive_detection_reports_the_command(self):
-        blocks = extract("## Setup\n```bash\ncd top\n npm login\n```")
-        self.assertIn("npm login", blocks[0].reason)
+        self.assertIn("npm login", extract("## Setup\n```bash\ncd top\n npm login\n```")[0].reason)
 
     def test_library_install_override_is_supported(self):
-        blocks = extract("## Setup\n```bash\npip install demo\n```", package_name="demo")
-        self.assertEqual(blocks[0].status, "skipped")
+        self.assertEqual(extract("## Setup\n```bash\npip install demo\n```", package_name="demo")[0].status, "skipped")
 
 
 if __name__ == "__main__":
