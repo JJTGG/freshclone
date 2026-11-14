@@ -11,52 +11,60 @@ SAMPLES = ROOT / "tests" / "samples"
 SOURCES = SAMPLES / "SOURCES.md"
 
 
-def fetch_counts() -> tuple[int, int]:
+def source_counts() -> tuple[int, int]:
     fetched = 0
-    failures = 0
+    failed = 0
     if SOURCES.exists():
         for line in SOURCES.read_text(encoding="utf-8").splitlines():
             if line.startswith("- ") and "FAILED" in line:
-                failures += 1
+                failed += 1
             elif line.startswith("- "):
                 fetched += 1
-    return fetched, failures
+    return fetched, failed
 
 
-def main() -> None:
+def build_report() -> str:
     summary = ["# FreshClone extractor sample report", ""]
-    fetched, failures = fetch_counts()
-    usable_readmes = 0
-    skipped_blocks = 0
+    fetched, failed = source_counts()
+    unsupported = 0
+    usable = 0
+    skipped = 0
     no_setup = 0
 
-    for readme in sorted(SAMPLES.glob("*.md")):
+    for readme in sorted(SAMPLES.glob("*__*.md")):
         blocks = extract(readme.read_text(encoding="utf-8-sig"))
         summary.append(f"## {readme.name}")
         if not blocks:
             no_setup += 1
             summary.append("- **No setup section found**")
-            summary.append("")
-            continue
-        if any(block.status == "usable" for block in blocks):
-            usable_readmes += 1
+        elif any(block.status == "usable" for block in blocks):
+            usable += 1
         for block in blocks:
             if block.status == "usable":
                 summary.append(f"- Usable, line {block.line}, heading **{block.heading}**: `{'; '.join(block.commands)}`")
             else:
-                skipped_blocks += 1
+                skipped += 1
                 summary.append(f"- Skipped, line {block.line}, heading **{block.heading}**: {block.reason}")
         summary.append("")
+
+    for readme in sorted(SAMPLES.glob("*__*.rst")):
+        unsupported += 1
+        summary.append(f"## {readme.name}\n- **Unsupported format**")
 
     summary.extend([
         "## Totals",
         f"- READMEs fetched: **{fetched}**",
-        f"- Fetch failures: **{failures}**",
-        f"- READMEs with at least one usable block: **{usable_readmes}**",
-        f"- Skipped blocks: **{skipped_blocks}**",
+        f"- Fetch failures: **{failed}**",
+        f"- Unsupported formats: **{unsupported}**",
+        f"- READMEs with at least one usable block: **{usable}**",
+        f"- Skipped blocks: **{skipped}**",
         f"- No-setup READMEs: **{no_setup}**",
     ])
-    report = "\n".join(summary) + "\n"
+    return "\n".join(summary) + "\n"
+
+
+def main() -> None:
+    report = build_report()
     print(report)
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:
