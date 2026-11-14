@@ -16,6 +16,7 @@ PROMPT = re.compile(r"^\s*\$\s?")
 FIRST_WORD_INTERACTIVE = re.compile(r"^(read|select|passwd|ssh|vim|nano|top|htop|python\s+-i|node|npm\s+(init|login)|gh\s+auth\s+login)(?:\s|$)", re.I)
 HOST_COMMAND = re.compile(r"^(sudo|apt|apt-get|dnf|brew|docker)(?:\s|$)|^docker\s+compose(?:\s|$)", re.I)
 LIBRARY_INSTALL = re.compile(r"^(npm|pnpm|yarn)\s+(install|i|add)(?:\s|$)|^(pip|pip3)\s+install(?:\s|$)", re.I)
+ALTERNATIVE_PROSE = re.compile(r"(?:^|\n)\s*or\s*(?:$|\n)|\balternatively\b|\botherwise\b|\busing\s+[^:\n]+:|\bwith\s+[^:\n]+:|\bon\s+[^:\n]+:", re.I)
 
 
 @dataclass
@@ -63,11 +64,12 @@ def find_headings(lines: list[str]) -> list[tuple[int, str, int | None]]:
     return headings
 
 
-def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -> list[tuple[int, str, int, list[str], str]]:
+def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -> list[tuple[int, str, int, list[str], str, str]]:
     result = []
     heading_index = 0
     active_heading = ""
     active_priority = None
+    previous_end = None
     index = 0
     while index < len(lines):
         number = index + 1
@@ -81,6 +83,8 @@ def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -
         marker, info = match.groups()
         language = info.strip().split(None, 1)[0].lower() if info.strip() else ""
         start = number
+        prose_start = previous_end if previous_end is not None else (headings[heading_index - 1][0] if heading_index else 1)
+        prose = "\n".join(lines[prose_start:start - 1])
         body = []
         index += 1
         while index < len(lines):
@@ -89,8 +93,10 @@ def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -
                 break
             body.append(lines[index])
             index += 1
+        end = index + 1
         if active_priority is not None:
-            result.append((active_priority, active_heading, start, body, language))
+            result.append((active_priority, active_heading, start, body, language, prose))
+        previous_end = end + 1
         index += 1
     return result
 
@@ -137,6 +143,8 @@ def package_name_from_files(repo_root: Path | None) -> str | None:
 def classify(commands: list[str], prose: str, package_name: str | None, repo_url: str | None) -> tuple[str, str, list[str]]:
     if not commands:
         return "skipped", "empty or comment-only block", commands
+    if ALTERNATIVE_PROSE.search(prose):
+        return "skipped", "alternative instructions", commands
     for command in commands:
         if PLACEHOLDER.search(command):
             return "skipped", f"contains a placeholder: {command}", commands
@@ -144,8 +152,6 @@ def classify(commands: list[str], prose: str, package_name: str | None, repo_url
             return "skipped", f"interactive command: {command}", commands
         if HOST_COMMAND.match(command):
             return "skipped", f"not supported in the non-root container: {command}", commands
-    if re.search(r"\b(or|alternatively|using\s+\S+|with\s+\S+|on\s+\S+)\s*[:.]", prose, re.I):
-        return "skipped", "alternative platform or tool instructions", commands
     own_clone = next((command for command in commands if command.startswith("git clone") and repo_url and repo_url in command), None)
     if own_clone:
         rewritten = []
@@ -173,7 +179,7 @@ def extract(text: str, package_name: str | None = None, repo_root: Path | None =
     high_exists = any(priority < 50 for priority, *_ in fences)
     blocks = []
     package_name = package_name or package_name_from_files(repo_root)
-    for priority, heading, line, raw_lines, language in fences:
+    for priority, heading, line, raw_lines, language, prose in fences:
         if language not in LANGUAGES:
             blocks.append(Block("skipped", f"unsupported language: {language}", heading, line, []))
             continue
@@ -181,8 +187,7 @@ def extract(text: str, package_name: str | None = None, repo_root: Path | None =
         if priority == 50 and high_exists:
             blocks.append(Block("skipped", "lower-priority install section ignored because a higher-priority section exists", heading, line, commands))
             continue
-        previous = lines[max(0, line - 4):line - 1]
-        status, reason, commands = classify(commands, " ".join(previous), package_name, repo_url)
+        status, reason, commands = classify(commands, prose, package_name, repo_url)
         blocks.append(Block(status, reason, heading, line, commands))
     return blocks
 
