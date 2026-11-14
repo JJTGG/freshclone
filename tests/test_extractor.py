@@ -75,6 +75,19 @@ class ExtractorRegressionTests(unittest.TestCase):
         blocks = extract(text)
         self.assertIn("alternative", blocks[0].reason)
 
+    def test_alternative_bare_or_between_blocks_skips_only_second(self):
+        text = "## Setup\n```bash\necho first\n```\nor\n```bash\necho second\n```"
+        blocks = extract(text)
+        self.assertEqual(blocks[0].status, "usable")
+        self.assertEqual(blocks[1].status, "skipped")
+        self.assertIn("alternative", blocks[1].reason)
+
+    def test_using_yarn_still_marks_the_block_as_alternative(self):
+        text = "## Setup\nUsing yarn:\n```bash\nyarn install\n```"
+        blocks = extract(text)
+        self.assertEqual(blocks[0].status, "skipped")
+        self.assertIn("alternative", blocks[0].reason)
+
     def test_project_library_install_is_skipped(self):
         blocks = extract("## Setup\n```bash\nnpm install freshclone\n```", package_name="freshclone")
         self.assertEqual(blocks[0].status, "skipped")
