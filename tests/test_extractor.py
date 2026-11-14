@@ -76,11 +76,19 @@ class ExtractorRegressionTests(unittest.TestCase):
         self.assertIn("alternative", blocks[0].reason)
 
     def test_alternative_bare_or_between_blocks_skips_only_second(self):
-        text = "## Setup\n```bash\necho first\n```\nor\n```bash\necho second\n```"
+        text = "## Setup\n```bash\necho first\n```or\n```bash\necho second\n```"
         blocks = extract(text)
         self.assertEqual(blocks[0].status, "usable")
         self.assertEqual(blocks[1].status, "skipped")
         self.assertIn("alternative", blocks[1].reason)
+
+    def test_alternative_or_variants_are_skipped(self):
+        for prose in ("Or:", "**or**", "otherwise"):
+            text = f"## Setup\n```bash\necho first\n```\n{prose}\n```bash\necho second\n```"
+            blocks = extract(text)
+            self.assertEqual(blocks[0].status, "usable", prose)
+            self.assertEqual(blocks[1].status, "skipped", prose)
+            self.assertIn("alternative", blocks[1].reason)
 
     def test_using_yarn_still_marks_the_block_as_alternative(self):
         text = "## Setup\nUsing yarn:\n```bash\nyarn install\n```"
