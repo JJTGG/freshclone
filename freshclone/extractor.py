@@ -16,7 +16,6 @@ PROMPT = re.compile(r"^\s*\$\s?")
 FIRST_WORD_INTERACTIVE = re.compile(r"^(read|select|passwd|ssh|vim|nano|top|htop|python\s+-i|node|npm\s+(init|login)|gh\s+auth\s+login)(?:\s|$)", re.I)
 HOST_COMMAND = re.compile(r"^(sudo|apt|apt-get|dnf|brew|docker)(?:\s|$)|^docker\s+compose(?:\s|$)", re.I)
 LIBRARY_INSTALL = re.compile(r"^(npm|pnpm|yarn)\s+(install|i|add)(?:\s|$)|^(pip|pip3)\s+install(?:\s|$)", re.I)
-ALTERNATIVE_PROSE = re.compile(r"(?:^|\n)\s*or\s*(?:$|\n)|\balternatively\b|\botherwise\b|\busing\s+[^:\n]+:|\bwith\s+[^:\n]+:|\bon\s+[^:\n]+:", re.I)
 
 
 @dataclass
@@ -89,7 +88,7 @@ def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -
         index += 1
         while index < len(lines):
             close = re.match(r"^\s*(`{3,}|~{3,})\s*$", lines[index])
-            if close and close.group(1)[0] == marker[0] and len(close.group(1)) >= len(marker):
+            if close and close.group(1)[0] == marker[0] and len(close.group1) >= len(marker):
                 break
             body.append(lines[index])
             index += 1
@@ -140,10 +139,22 @@ def package_name_from_files(repo_root: Path | None) -> str | None:
     return None
 
 
+def normalize_prose(text: str) -> str:
+    text = re.sub(r"[*_`~]", "", text.lower())
+    return re.sub(r"[^a-z0-9:]+", " ", text).strip()
+
+
+def is_alternative_prose(text: str) -> bool:
+    normalized = normalize_prose(text)
+    if re.search(r"(?:^|\s)(or|alternatively|otherwise)(?:\s|:|$)", normalized):
+        return True
+    return bool(re.search(r"(?:^|\s)(using|with|on)\s+[^:]+:", normalized))
+
+
 def classify(commands: list[str], prose: str, package_name: str | None, repo_url: str | None) -> tuple[str, str, list[str]]:
     if not commands:
         return "skipped", "empty or comment-only block", commands
-    if ALTERNATIVE_PROSE.search(prose):
+    if is_alternative_prose(prose):
         return "skipped", "alternative instructions", commands
     for command in commands:
         if PLACEHOLDER.search(command):
