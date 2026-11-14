@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from scripts import fetch_samples, sample_report
 
@@ -14,7 +15,11 @@ class FetchSamplesTests(unittest.TestCase):
             samples = root / "samples"
             samples.mkdir()
             corpus.write_text("owner/repo\n", encoding="utf-8")
-            with patch.object(fetch_samples, "CORPUS", corpus), patch.object(fetch_samples, "SAMPLES", samples), patch.object(fetch_samples, "SOURCES", samples / "SOURCES.md"), patch.object(fetch_samples, "run_git_ls_remote", return_value="abc123"), patch.object(fetch_samples, "get", side_effect=[b"README.rst"]):
+            def response(url):
+                if url.endswith("/README.md") or url.endswith("/readme.md") or url.endswith("/Readme.md"):
+                    raise HTTPError(url, 404, "missing", {}, None)
+                return b"README.rst"
+            with patch.object(fetch_samples, "CORPUS", corpus), patch.object(fetch_samples, "SAMPLES", samples), patch.object(fetch_samples, "SOURCES", samples / "SOURCES.md"), patch.object(fetch_samples, "run_git_ls_remote", return_value="abc123"), patch.object(fetch_samples, "get", side_effect=response):
                 fetch_samples.main()
             self.assertTrue((samples / "owner__repo.rst").exists())
             self.assertIn("abc123", (samples / "SOURCES.md").read_text(encoding="utf-8"))
