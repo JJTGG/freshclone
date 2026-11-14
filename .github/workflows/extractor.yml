@@ -2,6 +2,8 @@ name: extractor
 on:
   push:
     branches: [dev-extractor]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -11,5 +13,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m unittest discover -s tests
-      - run: python scripts/fetch_samples.py
-      - run: python scripts/sample_report.py
+      - if: always()
+        run: python scripts/fetch_samples.py
+      - if: always()
+        run: python scripts/sample_report.py
