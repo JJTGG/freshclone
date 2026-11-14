@@ -17,6 +17,7 @@ FIRST_WORD_INTERACTIVE = re.compile(r"^(read|select|passwd|ssh|vim|nano|top|htop
 HOST_COMMAND = re.compile(r"^(sudo|apt|apt-get|dnf|brew|docker)(?:\s|$)|^docker\s+compose(?:\s|$)", re.I)
 LIBRARY_INSTALL = re.compile(r"^(npm|pnpm|yarn)\s+(install|i|add)(?:\s|$)|^(pip|pip3)\s+install(?:\s|$)", re.I)
 
+
 @dataclass
 class Block:
     status: str
@@ -192,7 +193,15 @@ def main() -> None:
     parser.add_argument("--package-name")
     parser.add_argument("--repo-url")
     args = parser.parse_args()
-    print("no setup section found" if not (blocks := extract(args.readme.read_text(encoding="utf-8-sig"), args.package_name, args.readme.parent, args.repo_url)) else json.dumps([asdict(block) for block in blocks], indent=2))
+
+    text = args.readme.read_text(encoding="utf-8-sig")
+    blocks = extract(text, args.package_name, args.readme.parent, args.repo_url)
+    if not blocks:
+        print("no setup section found")
+        return
+
+    print(json.dumps([asdict(block) for block in blocks], indent=2))
+
 
 if __name__ == "__main__":
     main()
