@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch README files at the repository HEAD commit."""
+"""Fetch README and package metadata files at the repository HEAD commit."""
 from pathlib import Path
 import subprocess
 from urllib.error import HTTPError, URLError
@@ -10,6 +10,8 @@ CORPUS = ROOT / "tests" / "samples" / "corpus.txt"
 SAMPLES = CORPUS.parent
 SOURCES = SAMPLES / "SOURCES.md"
 README_NAMES = ("README.md", "readme.md", "Readme.md", "README.rst", "README")
+METADATA_NAMES = ("package.json", "pyproject.toml", "setup.cfg")
+DOC_NAMES = ("CONTRIBUTING.md", "DEVELOPMENT.md", "docs/development.md")
 
 
 def get(url: str) -> bytes:
@@ -23,14 +25,22 @@ def run_git_ls_remote(owner: str, repo: str) -> str:
     return result.stdout.split()[0]
 
 
-def fetch_readme(owner: str, repo: str, commit: str) -> tuple[bytes, str]:
-    for name in README_NAMES:
+def fetch_optional(owner: str, repo: str, commit: str, names: tuple[str, ...]) -> list[tuple[str, bytes]]:
+    found = []
+    for name in names:
         try:
-            return get(f"https://raw.githubusercontent.com/{owner}/{repo}/{commit}/{name}"), name
+            found.append((name, get(f"https://raw.githubusercontent.com/{owner}/{repo}/{commit}/{name}")))
         except HTTPError as error:
             if error.code != 404:
                 raise
-    raise FileNotFoundError("README file not found")
+    return found
+
+
+def fetch_readme(owner: str, repo: str, commit: str) -> tuple[bytes, str]:
+    found = fetch_optional(owner, repo, commit, README_NAMES)
+    if not found:
+        raise FileNotFoundError("README file not found")
+    return found[0]
 
 
 def corpus_entries() -> list[str]:
@@ -48,6 +58,11 @@ def main() -> None:
             content, readme_name = fetch_readme(owner, repo, commit)
             extension = ".rst" if readme_name.endswith(".rst") else ".md"
             (SAMPLES / f"{owner}__{repo}{extension}").write_bytes(content)
+            for name, metadata in fetch_optional(owner, repo, commit, METADATA_NAMES):
+                (SAMPLES / f"{owner}__{repo}.{name}").write_bytes(metadata)
+            for name, documentation in fetch_optional(owner, repo, commit, DOC_NAMES):
+                output = SAMPLES / f"{owner}__{repo}__{name.replace('/', '__')}"
+                output.write_bytes(documentation)
             fetched.append(f"- `{entry}` — `{commit}` — `{readme_name}`")
         except (HTTPError, URLError, OSError, TimeoutError, subprocess.SubprocessError, FileNotFoundError, IndexError) as error:
             failures.append(f"- `{entry}` — FAILED: {error}")
