@@ -9,6 +9,8 @@ from freshclone.extractor import extract
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "samples"
 SOURCES = SAMPLES / "SOURCES.md"
+HIGH_PRIORITY = {"contributing", "development", "dev setup", "setup", "getting started", "quick start", "quickstart", "build"}
+LOW_PRIORITY = {"install"}
 
 
 def source_counts() -> tuple[int, int]:
@@ -23,28 +25,44 @@ def source_counts() -> tuple[int, int]:
     return fetched, failed
 
 
+def tier_for_heading(heading: str) -> str | None:
+    normalized = heading.lower().strip()
+    if normalized in HIGH_PRIORITY:
+        return "HIGH"
+    if normalized == "install":
+        return "LOW"
+    return None
+
+
 def build_report() -> str:
     summary = ["# FreshClone extractor sample report", ""]
     fetched, failed = source_counts()
     unsupported = 0
-    usable = 0
     skipped = 0
     no_setup = 0
+    tier_totals = {"HIGH": [0, 0], "LOW": [0, 0]}
 
     for readme in sorted(SAMPLES.glob("*__*.md")):
         blocks = extract(readme.read_text(encoding="utf-8-sig"))
         summary.append(f"## {readme.name}")
-        if not blocks:
+        usable_blocks = [block for block in blocks if block.status == "usable"]
+        if not usable_blocks:
             no_setup += 1
-            summary.append("- **No setup section found**")
-        elif any(block.status == "usable" for block in blocks):
-            usable += 1
+            summary.append("- **No usable setup block**")
         for block in blocks:
             if block.status == "usable":
+                tier = tier_for_heading(block.heading)
+                if tier:
+                    tier_totals[tier][0] += 1
                 summary.append(f"- Usable, line {block.line}, heading **{block.heading}**: `{'; '.join(block.commands)}`")
             else:
                 skipped += 1
                 summary.append(f"- Skipped, line {block.line}, heading **{block.heading}**: {block.reason}")
+        if blocks:
+            for heading in {block.heading for block in blocks}:
+                tier = tier_for_heading(heading)
+                if tier:
+                    tier_totals[tier][1] += 1
         summary.append("")
 
     for readme in sorted(SAMPLES.glob("*__*.rst")):
@@ -56,10 +74,16 @@ def build_report() -> str:
         f"- READMEs fetched: **{fetched}**",
         f"- Fetch failures: **{failed}**",
         f"- Unsupported formats: **{unsupported}**",
-        f"- READMEs with at least one usable block: **{usable}**",
         f"- Skipped blocks: **{skipped}**",
         f"- No-setup READMEs: **{no_setup}**",
+        "",
+        "## Confidence tiers",
     ])
+    for tier in ("HIGH", "LOW"):
+        usable_count, total_count = tier_totals[tier]
+        hit_rate = (usable_count / total_count * 100) if total_count else 0.0
+        summary.append(f"- {tier}: **{usable_count}/{total_count} ({hit_rate:.1f}%)**")
+
     return "\n".join(summary) + "\n"
 
 
