@@ -95,7 +95,7 @@ def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -
         end = index + 1
         if active_priority is not None:
             result.append((active_priority, active_heading, start, body, language, prose))
-        previous_end = end + 1
+        previous_end = end
         index += 1
     return result
 
@@ -146,6 +146,10 @@ def normalize_prose(text: str) -> str:
 
 def is_alternative_prose(text: str) -> bool:
     normalized = normalize_prose(text)
+    for line in normalized.splitlines():
+        words = line.strip().split()
+        if words and words[0].rstrip(":.,!?;-") in {"or", "alternatively", "otherwise"}:
+            return True
     if re.search(r"(?:^|\s)(or|alternatively|otherwise)(?:\s|:|$)", normalized):
         return True
     return bool(re.search(r"(?:^|\s)(using|with|on)\s+[^:]+:", normalized))
