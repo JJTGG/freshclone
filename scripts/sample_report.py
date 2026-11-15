@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import json
 import os
+import re
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from freshclone.extractor import extract
+from freshclone.extractor import extract, find_headings, read_fences
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "samples"
@@ -38,6 +40,24 @@ def owner_for_sample(readme: Path) -> str:
     return readme.name.split("__", 1)[0]
 
 
+def metadata_package_name(readme: Path) -> str | None:
+    prefix = readme.with_suffix("")
+    for suffix in (".package.json", ".pyproject.toml", ".setup.cfg"):
+        path = Path(str(prefix) + suffix)
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8-sig")
+        if suffix == ".package.json":
+            try:
+                return json.loads(text).get("name")
+            except (ValueError, AttributeError):
+                continue
+        match = re.search(r"^name\s*=\s*[\"']([^\"']+)[\"']", text, re.M)
+        if match:
+            return match.group(1)
+    return None
+
+
 def build_report() -> str:
     summary = ["# FreshClone extractor sample report", ""]
     fetched, failed = source_counts()
@@ -47,13 +67,19 @@ def build_report() -> str:
     tier_totals = {"HIGH": {}, "LOW": {}}
 
     for readme in sorted(SAMPLES.glob("*__*.md")):
-        blocks = extract(readme.read_text(encoding="utf-8-sig"))
+        text = readme.read_text(encoding="utf-8-sig")
+        package_name = metadata_package_name(readme)
+        blocks = extract(text, package_name=package_name)
         owner_group = "JJTGG/*" if owner_for_sample(readme) == "JJTGG" else "all others"
         summary.append(f"## {readme.name}")
         usable_blocks = [block for block in blocks if block.status == "usable"]
         if not usable_blocks:
             no_setup += 1
-            summary.append("- **No usable setup block**")
+            headings = find_headings(text.splitlines())
+            fences = read_fences(text.splitlines(), headings)
+            heading_names = ", ".join(heading for _, heading, _ in headings) or "none"
+            non_target = sum(1 for priority, *_ in fences if priority is None)
+            summary.append(f"- **No usable setup block**. Headings found: {heading_names}; non-target fenced blocks: **{non_target}**")
         for block in blocks:
             tier = tier_for_heading(block.heading)
             if block.status == "usable":
@@ -63,7 +89,10 @@ def build_report() -> str:
                 summary.append(f"- Usable, line {block.line}, heading **{block.heading}**: `{'; '.join(block.commands)}`")
             else:
                 skipped += 1
-                summary.append(f"- Skipped, line {block.line}, heading **{block.heading}**: {block.reason}")
+                trigger = block.reason
+                if block.commands:
+                    trigger = f"{trigger}; command: `{'; '.join(block.commands)}`"
+                summary.append(f"- Skipped, line {block.line}, heading **{block.heading}**: {block.reason}. Trigger: {trigger}")
         if blocks:
             for heading in {block.heading for block in blocks}:
                 tier = tier_for_heading(heading)
