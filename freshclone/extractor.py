@@ -166,6 +166,10 @@ def has_multiple_package_managers(commands: list[str]) -> bool:
     return len(managers) > 1
 
 
+def scaffold_command(command: str) -> bool:
+    return bool(re.match(r"^(npx|npm\s+create|yarn\s+create|pnpm\s+create|bun\s+create|cookiecutter|cargo\s+new)\b", command, re.I))
+
+
 def classify(commands: list[str], prose: str, package_name: str | None, repo_url: str | None) -> tuple[str, str, list[str]]:
     if not commands:
         return "skipped", "empty or comment-only block", commands
@@ -197,6 +201,8 @@ def classify(commands: list[str], prose: str, package_name: str | None, repo_url
         for command in commands:
             if LIBRARY_INSTALL.match(command) and re.search(rf"\b{re.escape(package_name)}\b", command):
                 return "skipped", f"library consumer install: {command}", commands
+    if any(scaffold_command(command) for command in commands):
+        return "skipped", "scaffold/init block; dependent steps are not verified", commands
     return "usable", "", commands
 
 
@@ -207,7 +213,10 @@ def extract(text: str, package_name: str | None = None, repo_root: Path | None =
     high_exists = any(priority < 50 for priority, *_ in fences)
     blocks = []
     package_name = package_name or package_name_from_files(repo_root)
+    scaffold_seen = False
     for priority, heading, line, raw_lines, language, prose in fences:
+        if heading_key(heading).startswith("usage"):
+            continue
         if language not in LANGUAGES:
             blocks.append(Block("skipped", f"unsupported language: {language}", heading, line, []))
             continue
@@ -216,6 +225,11 @@ def extract(text: str, package_name: str | None = None, repo_root: Path | None =
             blocks.append(Block("skipped", "lower-priority install section ignored because a higher-priority section exists", heading, line, commands))
             continue
         status, reason, commands = classify(commands, prose, package_name, repo_url)
+        if status == "skipped" and "scaffold" in reason:
+            scaffold_seen = True
+        elif scaffold_seen and any(re.match(r"^(cd\s+|npm\s+(i|install|run)|yarn\s+|pnpm\s+|bun\s+)", command, re.I) for command in commands):
+            status = "skipped"
+            reason = "depends on skipped scaffold/init block"
         blocks.append(Block(status, reason, heading, line, commands))
     return blocks
 
