@@ -71,6 +71,18 @@ class SampleReportTests(unittest.TestCase):
             self.assertIn("high", report.lower())
             self.assertIn("low", report.lower())
 
+    def test_report_includes_no_setup_diagnostics_and_skip_triggers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            samples = Path(directory)
+            (samples / "owner__empty.md").write_text("# Project\n## Usage\n```bash\necho ignored\n```\n", encoding="utf-8")
+            (samples / "owner__skip.md").write_text("## Setup\nOr:\n```bash\necho skipped\n```\n", encoding="utf-8")
+            with patch.object(sample_report, "SAMPLES", samples):
+                report = sample_report.build_report()
+            self.assertIn("Headings found", report)
+            self.assertIn("non-target fenced blocks: **1**", report)
+            self.assertIn("Trigger:", report)
+            self.assertIn("Or:", report)
+
 
 if __name__ == "__main__":
     unittest.main()
