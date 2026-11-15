@@ -40,7 +40,8 @@ def fetch_readme(owner: str, repo: str, commit: str) -> tuple[bytes, str]:
     found = fetch_optional(owner, repo, commit, README_NAMES)
     if not found:
         raise FileNotFoundError("README file not found")
-    return found[0]
+    name, content = found[0]
+    return content, name
 
 
 def corpus_entries() -> list[str]:
