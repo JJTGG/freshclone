@@ -34,26 +34,32 @@ def tier_for_heading(heading: str) -> str | None:
     return None
 
 
+def owner_for_sample(readme: Path) -> str:
+    return readme.name.split("__", 1)[0]
+
+
 def build_report() -> str:
     summary = ["# FreshClone extractor sample report", ""]
     fetched, failed = source_counts()
     unsupported = 0
     skipped = 0
     no_setup = 0
-    tier_totals = {"HIGH": [0, 0], "LOW": [0, 0]}
+    tier_totals = {"HIGH": {}, "LOW": {}}
 
     for readme in sorted(SAMPLES.glob("*__*.md")):
         blocks = extract(readme.read_text(encoding="utf-8-sig"))
+        owner_group = "JJTGG/*" if owner_for_sample(readme) == "JJTGG" else "all others"
         summary.append(f"## {readme.name}")
         usable_blocks = [block for block in blocks if block.status == "usable"]
         if not usable_blocks:
             no_setup += 1
             summary.append("- **No usable setup block**")
         for block in blocks:
+            tier = tier_for_heading(block.heading)
             if block.status == "usable":
-                tier = tier_for_heading(block.heading)
                 if tier:
-                    tier_totals[tier][0] += 1
+                    stats = tier_totals[tier].setdefault(owner_group, [0, 0])
+                    stats[0] += 1
                 summary.append(f"- Usable, line {block.line}, heading **{block.heading}**: `{'; '.join(block.commands)}`")
             else:
                 skipped += 1
@@ -62,7 +68,8 @@ def build_report() -> str:
             for heading in {block.heading for block in blocks}:
                 tier = tier_for_heading(heading)
                 if tier:
-                    tier_totals[tier][1] += 1
+                    stats = tier_totals[tier].setdefault(owner_group, [0, 0])
+                    stats[1] += 1
         summary.append("")
 
     for readme in sorted(SAMPLES.glob("*__*.rst")):
@@ -77,12 +84,19 @@ def build_report() -> str:
         f"- Skipped blocks: **{skipped}**",
         f"- No-setup READMEs: **{no_setup}**",
         "",
-        "## Confidence tiers",
+        "## Confidence tiers by corpus group",
     ])
     for tier in ("HIGH", "LOW"):
-        usable_count, total_count = tier_totals[tier]
-        hit_rate = (usable_count / total_count * 100) if total_count else 0.0
-        summary.append(f"- {tier}: **{usable_count}/{total_count} ({hit_rate:.1f}%)**")
+        summary.append(f"### {tier}")
+        combined = [0, 0]
+        for group in ("JJTGG/*", "all others"):
+            usable_count, total_count = tier_totals[tier].get(group, [0, 0])
+            combined[0] += usable_count
+            combined[1] += total_count
+            hit_rate = usable_count / total_count * 100 if total_count else 0.0
+            summary.append(f"- {group}: **{usable_count}/{total_count} ({hit_rate:.1f}%)**")
+        hit_rate = combined[0] / combined[1] * 100 if combined[1] else 0.0
+        summary.append(f"- Combined: **{combined[0]}/{combined[1]} ({hit_rate:.1f}%)**")
 
     return "\n".join(summary) + "\n"
 
