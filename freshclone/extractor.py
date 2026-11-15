@@ -11,7 +11,7 @@ from pathlib import Path
 HIGH_PRIORITY = ("contributing", "development", "dev setup", "setup", "getting started", "quick start", "quickstart", "build")
 LOW_PRIORITY = "install"
 LANGUAGES = {"", "bash", "sh", "shell", "console"}
-PLACEHOLDER = re.compile(r"<[^>]+>|\bYOUR_[A-Z0-9_]+\b|(?<!\$)\{[^}]+\}")
+PLACEHOLDER = re.compile(r"<[^>]+>|\bYOUR_[A-Z0-9_]+\b|(?<!\$)\{[A-Za-z0-9_.-]+\}")
 PROMPT = re.compile(r"^\s*\$\s?")
 FIRST_WORD_INTERACTIVE = re.compile(r"^(read|select|passwd|ssh|vim|nano|top|htop|python\s+-i|node|npm\s+(init|login)|gh\s+auth\s+login)(?:\s|$)", re.I)
 HOST_COMMAND = re.compile(r"^(sudo|apt|apt-get|dnf|brew|docker)(?:\s|$)|^docker\s+compose(?:\s|$)", re.I)
