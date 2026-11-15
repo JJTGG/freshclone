@@ -56,7 +56,9 @@ def find_headings(lines: list[str]) -> list[tuple[int, str, int | None]]:
         while stack and stack[-1][0] >= level:
             stack.pop()
         priority = priority_for(title)
-        if priority is None and stack:
+        if heading_key(title).startswith("usage"):
+            priority = None
+        elif priority is None and stack:
             priority = stack[-1][1]
         stack.append((level, priority))
         headings.append((number, title, priority))
@@ -133,7 +135,7 @@ def package_name_from_files(repo_root: Path | None) -> str | None:
             pass
     pyproject = repo_root / "pyproject.toml"
     if pyproject.exists():
-        match = re.search(r"^name\s*=\s*[\"']([^\"']+)", pyproject.read_text(encoding="utf-8-sig"), re.M)
+        match = re.search(r"^name\s*=\s*[\"']([^\"']+)[\"']", pyproject.read_text(encoding="utf-8-sig"), re.M)
         if match:
             return match.group(1)
     return None
