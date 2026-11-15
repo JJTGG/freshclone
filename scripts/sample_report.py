@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-import json
 import os
-import re
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from freshclone.extractor import extract, find_headings, read_fences
+from freshclone.extractor import extract
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "samples"
@@ -49,10 +47,10 @@ def metadata_package_name(readme: Path) -> str | None:
         text = path.read_text(encoding="utf-8-sig")
         if suffix == ".package.json":
             try:
-                return json.loads(text).get("name")
+                return __import__("json").loads(text).get("name")
             except (ValueError, AttributeError):
                 continue
-        match = re.search(r"^name\s*=\s*[\"']([^\"']+)[\"']", text, re.M)
+        match = __import__("re").search(r"^name\s*=\s*[\"']([^\"']+)[\"']", text, __import__("re").M)
         if match:
             return match.group(1)
     return None
