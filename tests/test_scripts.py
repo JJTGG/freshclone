@@ -59,6 +59,18 @@ class SampleReportTests(unittest.TestCase):
             self.assertNotIn("SOURCES.md", report)
             self.assertIn("usable", report)
 
+    def test_report_separates_high_and_low_confidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            samples = Path(directory)
+            (samples / "owner__high.md").write_text("## Development\n```bash\necho high\n```\n", encoding="utf-8")
+            (samples / "owner__low.md").write_text("## Install\n```bash\necho low\n```\n", encoding="utf-8")
+            with patch.object(sample_report, "SAMPLES", samples):
+                report = sample_report.build_report()
+            self.assertIn("HIGH", report)
+            self.assertIn("LOW", report)
+            self.assertIn("high", report.lower())
+            self.assertIn("low", report.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
