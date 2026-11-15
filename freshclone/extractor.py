@@ -88,7 +88,7 @@ def read_fences(lines: list[str], headings: list[tuple[int, str, int | None]]) -
         index += 1
         while index < len(lines):
             close = re.match(r"^\s*(`{3,}|~{3,})\s*$", lines[index])
-            if close and close.group(1)[0] == marker[0] and len(close.group1) >= len(marker):
+            if close and close.group(1)[0] == marker[0] and len(close.group(1)) >= len(marker):
                 break
             body.append(lines[index])
             index += 1
