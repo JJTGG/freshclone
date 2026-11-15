@@ -157,11 +157,22 @@ def is_alternative_prose(text: str) -> bool:
     return bool(re.search(r"(?:^|\s)(using|with|on)\s+[^:]+:", normalized))
 
 
+def has_multiple_package_managers(commands: list[str]) -> bool:
+    managers = set()
+    for command in commands:
+        match = re.match(r"^(npm|bun|deno|yarn|pnpm)\s+(?:install|i|add)(?:\s|$)", command, re.I)
+        if match:
+            managers.add(match.group(1).lower())
+    return len(managers) > 1
+
+
 def classify(commands: list[str], prose: str, package_name: str | None, repo_url: str | None) -> tuple[str, str, list[str]]:
     if not commands:
         return "skipped", "empty or comment-only block", commands
     if is_alternative_prose(prose):
         return "skipped", "alternative instructions", commands
+    if has_multiple_package_managers(commands):
+        return "skipped", "multiple package managers", commands
     for command in commands:
         if PLACEHOLDER.search(command):
             return "skipped", f"contains a placeholder: {command}", commands
@@ -213,15 +224,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("readme", type=Path)
     parser.add_argument("--package-name")
+    parser.add_argument("--repo-root")
     parser.add_argument("--repo-url")
     args = parser.parse_args()
-
     text = args.readme.read_text(encoding="utf-8-sig")
-    blocks = extract(text, args.package_name, args.readme.parent, args.repo_url)
+    blocks = extract(text, args.package_name, Path(args.repo_root) if args.repo_root else None, args.repo_url)
     if not blocks:
         print("no setup section found")
         return
-
     print(json.dumps([asdict(block) for block in blocks], indent=2))
 
 
